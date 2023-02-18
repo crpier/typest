@@ -1,47 +1,54 @@
-from inspect import signature
-from typing import Callable
+from typing import Callable, NewType
 from pytest import fixture, FixtureRequest
 from _pytest.fixtures import FixtureFunctionMarker, FixtureDef
 
-
-new_fixtures = []
+new_fixtures: list[Callable] = []
 
 
 @fixture(autouse=True)
 def fixture_generator(request: FixtureRequest):
-    request.fixturenames.extend(new_fixtures)
+    request.fixturenames.extend([fixture.__name__ for fixture in new_fixtures])
     fixturedef = FixtureDef(
         fixturemanager=request._fixturemanager,
         baseid="",
-        argname="user",
-        func=user,
+        argname="User",
+        func=User,
         scope="function",
         params=None,
         unittest=False,
         ids=None,
     )
-    request._fixturemanager._arg2fixturedefs["user"] = [fixturedef]
-    print("\n\nfixture_generator")
-    print(request.fixturenames)
+    request._fixturemanager._arg2fixturedefs["User"] = [fixturedef]
 
 
 def new_fixture(wrapped_func: Callable):
-    marker = FixtureFunctionMarker(scope="function", params=None, name="user")
+    marker = FixtureFunctionMarker(
+        scope="function", params=None, name=wrapped_func.__name__
+    )
     new_fixture = marker(wrapped_func)
     wrapped_func = new_fixture
-    new_fixtures.append(wrapped_func.__name__)
-    sig = signature(wrapped_func)
-    print(sig.return_annotation)
-    print("\n\nnew_fixture")
+    new_fixtures.append(wrapped_func)
 
-    return wrapped_func
+    new_class = type(wrapped_func.__name__, (), {"__call__": wrapped_func})
+    return new_class
+
+
+def new_test(wrapped_func: Callable):
+    def dynamically_generated_func(User: int):
+        return wrapped_func(User)
+
+    return dynamically_generated_func
 
 
 @new_fixture
-def user() -> int:
-    print("\n\nuser")
+def User() -> int:
     return 32
 
 
-def test_user(user):
+def pula(kek: int):
+    print(kek)
+
+
+@new_test
+def test_user(user: User):
     assert True
