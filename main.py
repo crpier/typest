@@ -1,50 +1,39 @@
-from typing import Callable, NewType
-from pytest import fixture, FixtureRequest
-from _pytest.fixtures import FixtureFunctionMarker, FixtureDef
+from functools import partial
+from typing import Callable, ParamSpec, Type, TypeVar
+import pytest
+from _pytest.fixtures import FixtureDef
 from inspect import signature
 
 new_fixtures: list[Callable] = []
 
-
-@fixture(autouse=True)
-def fixture_generator(request: FixtureRequest):
-    request.fixturenames.extend([fixture.__name__ for fixture in new_fixtures])
-    fixturedef = FixtureDef(
-        fixturemanager=request._fixturemanager,
-        baseid="",
-        argname="UserId",
-        func=UserId,
-        scope="function",
-        params=None,
-        unittest=False,
-        ids=None,
-    )
-    request._fixturemanager._arg2fixturedefs["UserId"] = [fixturedef]
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
-def new_fixture(wrapped_func: Callable):
-    marker = FixtureFunctionMarker(
-        scope="function", params=None, name=wrapped_func.__name__
-    )
-    wrapped_sig = signature(wrapped_func)
-    fixtured_func = marker(wrapped_func)
-    new_fixtures.append(wrapped_func)
-
-    new_class = type(fixtured_func.__name__, (), {"__call__": fixtured_func})
-    return fixtured_func
-
-
-def new_test(wrapped_func: Callable):
-    def dynamically_generated_func(UserId: int):
-        return wrapped_func(UserId)
-
-    return dynamically_generated_func
+@pytest.fixture(autouse=True)
+def fixture_generator(request: pytest.FixtureRequest):
+    for new_fixture in new_fixtures:
+        request.fixturenames.append(new_fixture.__name__)
+        fixturedef = FixtureDef(
+            fixturemanager=request._fixturemanager,
+            baseid="",
+            argname=new_fixture.__name__,
+            func=new_fixture,
+            scope="function",
+            params=None,
+            unittest=False,
+            ids=None,
+        )
+        request._fixturemanager._arg2fixturedefs[fixture.__name__] = [fixturedef]
 
 
-@new_fixture
-def UserId() -> int:
-    return 32
+def fixture(func: Callable[P, T]) -> Type[T]:
+    new_fixtures.append(func)
+    return func  # type: ignore
 
-@new_test
-def test_user(user: UserId):
-    assert user == 32
+
+def some_test(func: Callable[..., None]):
+    sig = signature(func)
+    params = [value.annotation() for value in sig.parameters.values()]
+    new_func = partial(func, *params)
+    return new_func
